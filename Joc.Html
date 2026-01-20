@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moara cu Noroc: Blestemul Aurului</title>
+    <style>
+        :root {
+            --bg-dark: #0f0b0a;
+            --panel-bg: rgba(30, 25, 20, 0.95);
+            --gold: #d4af37;
+            --red: #8a0e0e;
+            --text-main: #c0b090;
+            --font-main: 'Georgia', serif;
+            --font-mono: 'Courier New', monospace;
+        }
+
+        * { box-sizing: border-box; user-select: none; }
+
+        body {
+            margin: 0;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: var(--font-main);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Canvas pentru efecte de particule */
+        #bg-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            opacity: 0.6;
+        }
+
+        .game-wrapper {
+            position: relative;
+            z-index: 10;
+            width: 1000px;
+            height: 85vh;
+            display: grid;
+            grid-template-columns: 250px 1fr 250px;
+            gap: 15px;
+            padding: 20px;
+        }
+
+        /* Panouri */
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid #4a3b30;
+            border-radius: 4px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            backdrop-filter: blur(5px);
+        }
+
+        h2, h3 { margin: 0 0 10px 0; color: var(--gold); text-align: center; text-transform: uppercase; font-size: 1rem; letter-spacing: 2px; border-bottom: 1px solid #444; padding-bottom: 5px; }
+
+        /* Coloana Stânga: Stats */
+        .stats-list { list-style: none; padding: 0; margin: 0; flex-grow: 1; }
+        .stats-list li { margin-bottom: 15px; font-size: 0.9rem; }
+        .bar-container { background: #333; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 5px; }
+        .bar-fill { height: 100%; transition: width 0.5s ease, background-color 0.5s; }
+
+        /* Inventar */
+        .inventory-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: auto; }
+        .item-slot { width: 100%; aspect-ratio: 1; border: 1px solid #555; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; cursor: help; position: relative; }
+        .item-slot:hover { background: #333; }
+        .item-tooltip { display: none; position: absolute; bottom: 100%; left: 0; background: black; border: 1px solid var(--gold); padding: 5px; width: 150px; font-size: 0.7rem; z-index: 100; pointer-events: none; }
+        .item-slot:hover .item-tooltip { display: block; }
+
+        /* Coloana Mijloc: Poveste */
+        .center-panel { grid-column: 2; display: flex; flex-direction: column; }
+        
+        #story-text {
+            flex-grow: 1;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            font-size: 1.1rem;
+            line-height: 1.6;
+            padding-right: 10px;
+            text-align: justify;
+        }
+
+        /* Efecte de text */
+        .glitch-text { animation: glitch 0.5s infinite; color: var(--red); font-family: var(--font-mono); }
+        .highlight { color: var(--gold); font-weight: bold; }
+        
+        @keyframes glitch {
+            0% { transform: translate(0) }
+            20% { transform: translate(-2px, 2px) }
+            40% { transform: translate(-2px, -2px) }
+            60% { transform: translate(2px, 2px) }
+            80% { transform: translate(2px, -2px) }
+            100% { transform: translate(0) }
+        }
+
+        #action-area {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            min-height: 100px;
+        }
+
+        button {
+            background: linear-gradient(to bottom, #2a2a2a, #1a1a1a);
+            border: 1px solid #555;
+            color: #ddd;
+            padding: 10px;
+            cursor: pointer;
+            font-family: var(--font-main);
+            transition: all 0.2s;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+        }
+
+        button:hover:not(:disabled) { border-color: var(--gold); color: var(--gold); background: #333; }
+        button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        /* Coloana Dreapta: Jurnal & Timp */
+        .log-panel { overflow-y: auto; font-family: var(--font-mono); font-size: 0.75rem; color: #888; }
+        .log-entry { margin-bottom: 8px; border-left: 2px solid #333; padding-left: 5px; }
+        .log-entry.bad { border-color: var(--red); color: #b55; }
+        .log-entry.good { border-color: green; color: #696; }
+
+        #day-night-indicator {
+            text-align: center;
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            color: var(--gold);
+        }
+
+        /* Overlay Game Over */
+        #game-over-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: black; z-index: 100; display: none;
+            flex-direction: column; justify-content: center; align-items: center;
+            text-align: center;
+        }
+        #game-over-screen h1 { font-size: 3rem; color: var(--red); }
+        #game-over-screen p { max-width: 600px; font-size: 1.2rem; margin-bottom: 30px; }
+
+    </style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+
+<div class="game-wrapper">
+    <div class="panel">
+        <h2>Stare</h2>
+        <ul class="stats-list">
+            <li>
+                Sănătate Mintală <span id="val-sanity">100%</span>
+                <div class="bar-container"><div id="bar-sanity" class="bar-fill" style="width: 100%; background: #4caf50;"></div></div>
+            </li>
+            <li>
+                Bani (Galbeni) <span id="val-gold">10</span>
+                <div class="bar-container"><div id="bar-gold" class="bar-fill" style="width: 10%; background: #ffd700;"></div></div>
+            </li>
+            <li>
+                Relație: Lică <span id="val-lica">0%</span>
+                <div class="bar-container"><div id="bar-lica" class="bar-fill" style="width: 0%; background: #b22222;"></div></div>
+            </li>
+            <li>
+                Relație: Ana <span id="val-ana">100%</span>
+                <div class="bar-container"><div id="bar-ana" class="bar-fill" style="width: 100%; background: #e91e63;"></div></div>
+            </li>
+            <li>
+                Suspiciune (Pintea) <span id="val-susp">0%</span>
+                <div class="bar-container"><div id="bar-susp" class="bar-fill" style="width: 0%; background: #2196f3;"></div></div>
+            </li>
+        </ul>
+
+        <h3>Desagă (Inventar)</h3>
+        <div class="inventory-grid" id="inventory-grid">
+            </div>
+    </div>
+
+    <div class="panel center-panel">
+        <div id="day-night-indicator">Ziua 1 - Dimineața</div>
+        <div id="story-text">
+            Bun venit la <strong>Moara cu Noroc</strong>. Ești Ghiță. Ai luat hanul în arendă. 
+            Totul pare liniștit, dar bătrânii spun că locul acesta are un blestem.<br><br>
+            Trebuie să strângi bani pentru a pleca, dar ai grijă... Sămădăul stăpânește aceste locuri.
+        </div>
+        <div id="action-area">
+            </div>
+    </div>
+
+    <div class="panel log-panel" id="log-panel">
+        <div class="log-entry">Jocul a început.</div>
+    </div>
+</div>
+
+<div id="game-over-screen">
+    <h1 id="end-title">SFÂRȘIT</h1>
+    <p id="end-desc">Descriere</p>
+    <button onclick="location.reload()" style="font-size: 1.5rem; padding: 20px;">Reîncepe Destinul</button>
+</div>
+
+<script>
+/**
+ * ENGINE JOC & STATE MANAGEMENT
+ */
+class GameEngine {
+    constructor() {
+        this.state = {
+            day: 1,
+            phase: 0, // 0: Dimineața, 1: Prânz, 2: Seara
+            gold: 20,
+            sanity: 100,
+            licaRel: 10,
+            anaRel: 90,
+            suspicion: 0,
+            inventory: [],
+            flags: {
+                metLica: false,
+                sworeOath: false,
+                killedAna: false
+            }
+        };
+
+        this.items = {
+            pistol: { id: 'pistol', name: 'Pistol', price: 50, icon: '🔫', desc: 'Pentru protecție... sau crimă.' },
+            necklace: { id: 'necklace', name: 'Mărgele', price: 30, icon: '📿', desc: 'Cadou pentru Ana.' },
+            cards: { id: 'cards', name: 'Cărți Joc', price: 10, icon: '🃏', desc: 'Pentru a juca noroc.' }
+        };
+
+        this.phases = ['Dimineața', 'Prânz', 'Seara'];
+        this.ui = new UIManager(this);
+        this.story = new StoryManager(this);
+        
+        this.init();
+    }
+
+    init() {
+        this.ui.updateStats();
+        this.ui.renderInventory();
+        this.story.showNode('start');
+        this.startBackgroundEffect();
+    }
+
+    nextPhase() {
+        this.state.phase++;
+        if (this.state.phase > 2) {
+            this.state.phase = 0;
+            this.state.day++;
+            this.handleNightEvents();
+        }
+        this.ui.updateTime();
+        
+        // Random check for Sanity effects
+        if (this.state.sanity < 40 && Math.random() > 0.7) {
+            this.ui.log("Auzi șoapte... Sau e vântul?", "bad");
+        }
+    }
+
+    handleNightEvents() {
+        this.ui.log(`A trecut noaptea. Ziua ${this.state.day} începe.`);
+        // Scădere naturală a relațiilor dacă nu sunt întreținute
+        this.state.anaRel -= 2;
+        
+        // Evenimente critice pe zile
+        if (this.state.day === 3 && !this.state.flags.metLica) {
+            this.story.showNode('meet_lica');
+            return;
+        }
+        if (this.state.day === 8) {
+            this.story.showNode('easter_fire'); // Final de timp
+            return;
+        }
+    }
+
+    modifyStat(stat, value) {
+        this.state[stat] += value;
+        // Limite
+        if (stat === 'gold') this.state[stat] = Math.max(0, this.state[stat]);
+        else {
+            this.state[stat] = Math.max(0, Math.min(100, this.state[stat]));
+        }
+        this.ui.updateStats();
+        this.checkGameOverConditions();
+    }
+
+    addToInventory(itemId) {
+        if (this.state.gold >= this.items[itemId].price) {
+            this.state.gold -= this.items[itemId].price;
+            this.state.inventory.push(itemId);
+            this.ui.renderInventory();
+            this.ui.updateStats();
+            this.ui.log(`Ai cumpărat ${this.items[itemId].name}.`, "good");
+            return true;
+        }
+        return false;
+    }
+
+    hasItem(itemId) {
+        return this.state.inventory.includes(itemId);
+    }
+
+    checkGameOverConditions() {
+        if (this.state.sanity <= 0) this.story.endGame('madness');
+        if (this.state.suspicion >= 100) this.story.endGame('arrest');
+        if (this.state.anaRel <= 0) this.ui.log("Ana nu te mai privește în ochi...", "bad");
+    }
+
+    // Efect vizual Canvas (Particule - Praf/Scântei)
+    startBackgroundEffect() {
+        const canvas = document.getElementById('bg-canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const particles = [];
+        for(let i=0; i<50; i++) {
+            particles.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                vx: (Math.random() - 0.5) * 0.5,
+                vy: (Math.random() - 0.5) * 0.5,
+                size: Math.random() * 2,
+                alpha: Math.random()
+            });
+        }
+
+        const animate = () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = this.state.sanity < 50 ? '#500' : '#d4af37'; // Aur sau Sânge în funcție de nebunie
+            
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                if(p.x < 0) p.x = canvas.width;
+                if(p.x > canvas.width) p.x = 0;
+                if(p.y < 0) p.y = canvas.height;
+                if(p.y > canvas.height) p.y = 0;
+
+                ctx.globalAlpha = p.alpha * 0.4;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            requestAnimationFrame(animate);
+        };
+        animate();
+    }
+}
+
+/**
+ * UI MANAGER
+ */
+class UIManager {
+    constructor(game) {
+        this.game = game;
+        this.els = {
+            sanity: document.getElementById('val-sanity'),
+            barSanity: document.getElementById('bar-sanity'),
+            gold: document.getElementById('val-gold'),
+            barGold: document.getElementById('bar-gold'),
+            lica: document.getElementById('val-lica'),
+            barLica: document.getElementById('bar-lica'),
+            ana: document.getElementById('val-ana'),
+            barAna: document.getElementById('bar-ana'),
+            susp: document.getElementById('val-susp'),
+            barSusp: document.getElementById('bar-susp'),
+            story: document.getElementById('story-text'),
+            actions: document.getElementById('action-area'),
+            inventory: document.getElementById('inventory-grid'),
+            log: document.getElementById('log-panel'),
+            time: document.getElementById('day-night-indicator')
+        };
+    }
+
+    updateStats() {
+        const s = this.game.state;
+        
+        this.els.sanity.innerText = s.sanity + '%';
+        this.els.barSanity.style.width = s.sanity + '%';
+        
+        this.els.gold.innerText = s.gold;
+        // Scala pentru bani e arbitrară (max 200 vizual)
+        this.els.barGold.style.width = Math.min(100, (s.gold / 200) * 100) + '%';
+
+        this.els.lica.innerText = s.licaRel + '%';
+        this.els.barLica.style.width = s.licaRel + '%';
+
+        this.els.ana.innerText = s.anaRel + '%';
+        this.els.barAna.style.width = s.anaRel + '%';
+
+        this.els.susp.innerText = s.suspicion + '%';
+        this.els.barSusp.style.width = s.suspicion + '%';
+
+        // Efecte vizuale pe text dacă e nebun
+        if (s.sanity < 40) {
+            this.els.story.classList.add('glitch-text');
+            document.body.style.filter = "sepia(0.8) contrast(1.2)";
+        } else {
+            this.els.story.classList.remove('glitch-text');
+            document.body.style.filter = "none";
+        }
+    }
+
+    updateTime() {
+        const phases = ['Dimineața', 'Prânz', 'Seara'];
+        this.els.time.innerText = `Ziua ${this.game.state.day} - ${phases[this.game.state.phase]}`;
+    }
+
+    renderInventory() {
+        this.els.inventory.innerHTML = '';
+        this.game.state.inventory.forEach(itemId => {
+            const item = this.game.items[itemId];
+            const div = document.createElement('div');
+            div.className = 'item-slot';
+            div.innerHTML = `${item.icon} <div class="item-tooltip">${item.name}: ${item.desc}</div>`;
+            this.els.inventory.appendChild(div);
+        });
+        
+        // Sloturi goale pentru aspect
+        for(let i = this.game.state.inventory.length; i<3; i++) {
+            const div = document.createElement('div');
+            div.className = 'item-slot';
+            div.style.opacity = '0.2';
+            this.els.inventory.appendChild(div);
+        }
+    }
+
+    log(msg, type = 'neutral') {
+        const div = document.createElement('div');
+        div.className = `log-entry ${type}`;
+        div.innerText = `[Ziua ${this.game.state.day}] ${msg}`;
+        this.els.log.prepend(div);
+    }
+
+    typeText(text) {
+        // Simplu insert innerHTML pentru a permite tag-uri, 
+        // dar într-un joc real am face un efect de mașină de scris
+        this.els.story.innerHTML = text;
+    }
+}
+
+/**
+ * STORY MANAGER (Logică de Narativă)
+ */
+class StoryManager {
+    constructor(game) {
+        this.game = game;
+        this.nodes = {
+            'start': {
+                text: "Moara stă singuratică. Dimineața e rece. Ce faci astăzi?",
+                choices: () => [
+                    { txt: "Deschid cârciuma (Muncă)", action: () => this.work() },
+                    { txt: "Verific împrejurimile (Pintea)", action: () => this.scout() },
+                    { txt: "Vizită la Arad (Cumpărături)", action: () => this.showNode('shop') }
+                ]
+            },
+            'shop': {
+                text: "Ești la târg. Negustorii strigă din toate părțile. Ai banii strânși în pumn.",
+                choices: () => {
+                    const opts = [
+                        { txt: "Înapoi la Moară", action: () => this.showNode('hub') }
+                    ];
+                    if (!this.game.hasItem('pistol')) 
+                        opts.push({ txt: `Cumpără Pistol (50g)`, action: () => this.buy('pistol') });
+                    if (!this.game.hasItem('necklace')) 
+                        opts.push({ txt: `Mărgele pt Ana (30g)`, action: () => this.buy('necklace') });
+                    if (!this.game.hasItem('cards')) 
+                        opts.push({ txt: `Cărți de joc (10g)`, action: () => this.buy('cards') });
+                    return opts;
+                }
+            },
+            'hub': {
+                text: "Ești în sala mare a cârciumei. Fumul de pipă plutește în aer.",
+                choices: () => {
+                    let opts = [];
+                    const ph = this.game.state.phase;
+                    
+                    if (ph === 0) opts.push({ txt: "Servește clienții", action: () => this.work() });
+                    if (ph === 1) opts.push({ txt: "Vorbește cu Ana", action: () => this.talkAna() });
+                    if (ph === 1 && this.game.hasItem('cards')) opts.push({ txt: "Joacă cărți cu porcarii", action: () => this.gamble() });
+                    if (ph === 2 && this.game.state.flags.metLica) opts.push({ txt: "Așteaptă-l pe Lică", action: () => this.meetLicaAction() });
+                    
+                    opts.push({ txt: "Odihnă (Treci timpul)", action: () => {
+                        this.game.nextPhase();
+                        this.showNode('hub');
+                    }});
+                    return opts;
+                }
+            },
+            'meet_lica': {
+                text: "Ușa se trântește de perete. <span class='highlight'>Lică Sămădăul</span> intră. E înalt, uscățiv și cu ochii mici și verzi. Toată lumea tace.<br>'Mă cunoști, Ghiță?' întreabă el.",
+                choices: () => [
+                    { txt: "Îl înfrunți", action: () => { 
+                        this.game.modifyStat('sanity', 5); 
+                        this.game.modifyStat('licaRel', -20);
+                        this.game.state.flags.metLica = true;
+                        this.game.ui.log("L-ai sfidat pe Lică.", "bad");
+                        this.showNode('hub');
+                    }},
+                    { txt: "Te supui", action: () => { 
+                        this.game.modifyStat('sanity', -10); 
+                        this.game.modifyStat('licaRel', 20);
+                        this.game.state.flags.metLica = true;
+                        this.game.ui.log("Lică zâmbește triumfător.", "bad");
+                        this.showNode('hub');
+                    }}
+                ]
+            }
+        };
+    }
+
+    showNode(nodeId) {
+        const node = this.nodes[nodeId] || this.nodes['hub'];
+        this.game.ui.typeText(typeof node.text === 'function' ? node.text() : node.text);
+        
+        const btnArea = document.getElementById('action-area');
+        btnArea.innerHTML = '';
+        
+        const choices = node.choices();
+        choices.forEach(c => {
+            const btn = document.createElement('button');
+            btn.innerText = c.txt;
+            btn.onclick = c.action;
+            btnArea.appendChild(btn);
+        });
+    }
+
+    // ACȚIUNI
+    work() {
+        const gain = Math.floor(Math.random() * 10) + 5;
+        this.game.modifyStat('gold', gain);
+        this.game.modifyStat('sanity', 2);
+        this.game.ui.log(`Ai muncit cinstit. +${gain} Galbeni.`);
+        this.game.nextPhase();
+        this.showNode('hub');
+    }
+
+    scout() {
+        this.game.modifyStat('suspicion', -5);
+        this.game.ui.log("Ai șters urmele de care. Pintea nu va găsi nimic.");
+        this.game.nextPhase();
+        this.showNode('hub');
+    }
+
+    buy(item) {
+        if(this.game.addToInventory(item)) {
+            this.showNode('shop');
+        } else {
+            this.game.ui.log("Nu ai destui bani!", "bad");
+        }
+    }
+
+    talkAna() {
+        if (this.game.hasItem('necklace')) {
+            this.game.modifyStat('anaRel', 30);
+            this.game.ui.log("I-ai dăruit mărgelele. Ana a zâmbit trist.", "good");
+            // Remove item logic could be added here
+        } else {
+            this.game.modifyStat('anaRel', 5);
+            this.game.ui.log("Ai stat de vorbă cu Ana despre copii.");
+        }
+        this.game.nextPhase();
+        this.showNode('hub');
+    }
+
+    gamble() {
+        const bet = 10;
+        if (this.game.state.gold < bet) {
+            this.game.ui.log("Nu ai bani de pariat.");
+            return;
+        }
+        
+        const win = Math.random() > 0.5;
+        if (win) {
+            this.game.modifyStat('gold', bet);
+            this.game.ui.log(`Ai câștigat la cărți! +${bet}`, "good");
+        } else {
+            this.game.modifyStat('gold', -bet);
+            this.game.modifyStat('sanity', -5);
+            this.game.ui.log(`Ai pierdut la cărți.`, "bad");
+        }
+        this.game.nextPhase();
+        this.showNode('hub');
+    }
+    
+    meetLicaAction() {
+        this.game.modifyStat('licaRel', 10);
+        this.game.modifyStat('suspicion', 10);
+        this.game.modifyStat('sanity', -10);
+        this.game.modifyStat('gold', 50);
+        this.game.ui.log("Ai făcut afaceri murdare cu Lică. +50 Galbeni.", "bad");
+        this.game.nextPhase();
+        this.showNode('hub');
+    }
+
+    endGame(reason) {
+        const screen = document.getElementById('game-over-screen');
+        const title = document.getElementById('end-title');
+        const desc = document.getElementById('end-desc');
+        
+        screen.style.display = 'flex';
+        
+        if (reason === 'madness') {
+            title.innerText = "NEBUNIE";
+            desc.innerHTML = "Mintea ta s-a frânt. În paranoia ta, ai văzut dușmani în toți. <br>Tragedia este completă.";
+        } else if (reason === 'arrest') {
+            title.innerText = "OCNA";
+            desc.innerText = "Pintea te-a prins. Ești vinovat de complicitate la jaf și crimă.";
+        } else if (reason === 'easter_fire') {
+            title.innerText = "FOCUL DE PAȘTE";
+            desc.innerText = "Totul arde. Moara cu Noroc a devenit cenușă. Așa le-a fost data.";
+        }
+    }
+}
+
+// Start Game
+const game = new GameEngine();
+
+</script>
+</body>
+</html>
